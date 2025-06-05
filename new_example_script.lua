@@ -118,12 +118,14 @@ Functions.UnitDefeated = function(plr: Player, Unit) -- SERVER ONLY
 
 			local NewUnit = Functions.GiveXP(DataStoreTable["Unit Inventory"][tostring(unit.key.value)], math.floor(math.pow(Unit.Level.Value , 1.9) * 2 + 100) / 8.5, plr, unit.Name)
 
-			if NewUnit == nil then warn("You suck gang...") return end
+			if not NewUnit == nil then 
 
 			local NewUnitInventory = DataStoreTable["Unit Inventory"]
 			NewUnitInventory[tostring(unit.key.value)] = NewUnit
 
 			DataStore.UpdatePlayerData(plr, "Unit Inventory", NewUnitInventory)
+
+			end
 		end
 	end
 	
@@ -245,48 +247,48 @@ end
 
 -- Equips Unit for player
 Functions.EquipUnit = function(plr, UnitKey)
-	local DataStore = require(script.Parent.Parent.Datastore)
+	local DataStore = require(script.Parent.Parent.Datastore) -- Datastore
 	local DataStoreTable = DataStore.GetPlayerDataTable(plr)
 	local Inventory = DataStoreTable["Unit Inventory"]
 	
 	local PlayerStats = plr:WaitForChild("PlayerStats")
 	local UnitEquipped = Inventory[tostring(UnitKey)]
 	
-	local SetUnitValues = function(Unit, UnitEquipped)
+	local SetUnitValues = function(Unit, UnitEquipped) -- Sets up values in the workspace
 		Unit.Value = UnitEquipped.Name
 		Unit.Level.Value = UnitEquipped.Level
 		Unit.Rank.Value = UnitEquipped.Rank
 		Unit.key.Value = UnitKey
 	end
 	
-	if UnitEquipped.Equipped == true then
+	if not UnitEquipped.Equipped == true then
 		Functions.UnequipUnit(plr, UnitKey)
-	return end
+	else
+		for _, Unit: IntValue in pairs(PlayerStats.Units:GetChildren()) do		
+			if Unit:FindFirstChild("Level").Value == 0 then -- Sets up unit in the players equipped units.
+				
+				SetUnitValues(Unit, UnitEquipped)
+				UnitEquipped.Equipped = true
+				
+				PlayerHandler.Notify(plr, "Summon Equipped!")
+				
+				local DataStoreTable = DataStore.GetPlayerDataTable(plr)
+				local NewPlayerStats = DataStoreTable["PlayerStats"]
+				NewPlayerStats[Unit.Name] = UnitKey
 	
-	for _, Unit: IntValue in pairs(PlayerStats.Units:GetChildren()) do		
-		if Unit:FindFirstChild("Level").Value == 0 then -- Sets up unit in the players equipped units.
-			
-			SetUnitValues(Unit, UnitEquipped)
-			UnitEquipped.Equipped = true
-			
-			PlayerHandler.Notify(plr, "Summon Equipped!")
-			
-			local DataStoreTable = DataStore.GetPlayerDataTable(plr)
-			local NewPlayerStats = DataStoreTable["PlayerStats"]
-			NewPlayerStats[Unit.Name] = UnitKey
-
-			DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats)
-			
-			Events.UpdateInventory:FireClient(plr)
-			
-			task.spawn(function()
-				while UnitEquipped.Equipped == true do
-					SetUnitValues(Unit, UnitEquipped)
-					task.wait()
-				end
-			end)
-			
-		return end	
+				DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats)
+				
+				Events.UpdateInventory:FireClient(plr)
+				
+				task.spawn(function()
+					while UnitEquipped.Equipped == true do
+						SetUnitValues(Unit, UnitEquipped)
+						task.wait()
+					end
+				end)
+				
+			return end	
+		end
 	end
 	
 end
@@ -322,21 +324,22 @@ end
 
 -- Activate units (so they can attack)
 Functions.ActivateUnits = function(plr: Player)
-	
+	-- Setting up the enemy in the workspace so the units can attack it.
 	local EnemyAlive = true
-	local Enemy = plr.PlayerStats.CurrentEnemy
+	local Enemy = plr.PlayerStats.CurrentEnemy 
 	local EnemyHealth = plr.PlayerStats.CurrentEnemy.HP
 	local Units = plr.PlayerStats.Units
-	
+
+	-- Adds the functionality for units to attack this enemy.
 	local AttackFunction = function(Unit)		
 		task.spawn(function()
 			
 			while plr do
-				
+				-- Checks if there is a unit equipped and the enemy is alive, then making it so that unit attacks the enemy.
 				if Unit.Value ~= "" and Unit.Value ~= nil and EnemyHealth.Value > 0 and EnemyAlive == true then
 					local Damage = Functions.CalculateDamage(Unit.Value, Unit.Level.Value, Unit.Rank.Value)
 					plr.PlayerStats.CurrentEnemy.HP.Value -= Damage	
-					Events.UnitAttacks:FireClient(plr, Unit.Name)
+					Events.UnitAttacks:FireClient(plr, Unit.Name) -- VFX
 					
 					task.spawn(function()
 						plr.PlayerStats.DPS.Value += Damage
@@ -347,7 +350,8 @@ Functions.ActivateUnits = function(plr: Player)
 					local Unit = Functions.FindUnit(Unit.Value)
 					task.wait(Unit.CD)
 				end
-				
+
+					-- Debounce timer
 				task.wait(math.random(5,7)/100)
 			end
 
@@ -376,7 +380,7 @@ end
 
 -- INVENTORY STUFF
 
-Functions.DeleteUnit = function(plr: Player, UnitKey)
+Functions.DeleteUnit = function(plr: Player, UnitKey) -- Deletes unit from inventory
 	local DataStore = require(Modules.Datastore)
 	local DataStoreTable = GetDataTable(plr)
 
@@ -389,12 +393,12 @@ Functions.DeleteUnit = function(plr: Player, UnitKey)
 	Events.UpdateInventory:FireClient(plr)
 end
 
-Functions.AddUnit = function(plr: Player, Unit) -- SERVER ONLY
+Functions.AddUnit = function(plr: Player, Unit) -- SERVER ONLY - Adds unit to inventory
 	local DataStore = require(Modules.Datastore)
 	local DataStoreTable = GetDataTable(plr)
 	
 	local NewUnitInventory = DataStoreTable["Unit Inventory"]
-	NewUnitInventory[tostring(math.random(1,147483647))] = Unit
+	NewUnitInventory[tostring(math.random(1,147483647))] = Unit -- Creates random key for unit and adds the unit into the inventory table.
 	
 	DataStore.UpdatePlayerData(plr, "Unit Inventory", NewUnitInventory)
 	Events.UpdateInventory:FireClient(plr)
@@ -409,7 +413,7 @@ end
 
 -- RoundStuff
 
-Functions.NextRound = function(plr)
+Functions.NextRound = function(plr) -- Advances to the next round after defeating a certain amount of enemies.
 	if plr.PlayerStats.EnemiesDefeated.Value >= 10 then
 		plr.PlayerStats.EnemiesDefeated.Value = 0
 		plr.PlayerStats.Round.Value += 1
