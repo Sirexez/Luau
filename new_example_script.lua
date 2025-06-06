@@ -102,7 +102,7 @@ Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 	local DataStoreTable = GetDataTable(plr)
 	local UnitInventory = DataStoreTable["Unit Inventory"]
 
-	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do -- goes through all of the units and gives them xp.
+	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do
 		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then
 			continue
 		end
@@ -111,7 +111,7 @@ Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 		local CurrentUnit = UnitInventory[UnitKey]
 		if not CurrentUnit then continue end -- Safety check
 
-		local NewUnit = Functions.GiveXP(CurrentUnit, XPAmount, plr, unit.Name) -- gives xp to the unit
+		local NewUnit = Functions.GiveXP(CurrentUnit, XPAmount, plr, unit.Name)
 		UnitInventory[UnitKey] = NewUnit
 	end
 
@@ -319,21 +319,25 @@ Functions.UnequipUnit = function(plr, UnitKey)
 	Inventory[tostring(UnitKey)].Equipped = false
 end
 
+
+local function HandleDPS(plr, Damage)
+	plr.PlayerStats.DPS.Value += Damage
+	task.wait(1)
+	plr.PlayerStats.DPS.Value -= Damage
+end
+
+
 local function UnitAttackLoop(plr, Unit, EnemyHealth) -- Adds the functionality for units to attack this enemy.
 	while plr do
 		if Unit.Value ~= "" and Unit.Value ~= nil and EnemyHealth.Value > 0 then
 			local Damage = Functions.CalculateDamage(Unit.Value, Unit.Level.Value, Unit.Rank.Value)
 			plr.PlayerStats.CurrentEnemy.HP.Value -= Damage
-			Events.UnitAttacks:FireClient(plr, Unit.Name)
+			Events.UnitAttacks:FireClient(plr, Unit.Name) -- VFX
 
-			task.spawn(function()
-				plr.PlayerStats.DPS.Value += Damage
-				task.wait(1)
-				plr.PlayerStats.DPS.Value -= Damage
-			end)
+			task.spawn(HandleDPS, plr, Damage) -- Increases DPS Value based of unit damage
 
 			local UnitData = Functions.FindUnit(Unit.Value)
-			task.wait(UnitData.CD)
+			task.wait(UnitData.CD) -- Cooldown
 		end
 		task.wait(math.random(5, 7) / 100)
 	end
@@ -343,7 +347,7 @@ local function MonitorEnemyHealth(plr: Player) -- Checks if the enemy is dead, i
 	local EnemyHealth = plr.PlayerStats.CurrentEnemy.HP
 
 	while plr do
-		if not plr:GetAttribute("ProcessingEnemy") and EnemyHealth.Value <= 0 then
+		if not plr:GetAttribute("ProcessingEnemy") and EnemyHealth.Value <= 0 then -- if the enemy is dead.
 			plr:SetAttribute("ProcessingEnemy", true)
 			Functions.UnitDefeated(plr, plr.PlayerStats.CurrentEnemy)
 			task.wait(1.15)
@@ -362,9 +366,9 @@ Functions.ActivateUnits = function(plr: Player)
 	local EnemyHealth = plr.PlayerStats.CurrentEnemy.HP
 	local Units = plr.PlayerStats.Units
 
-	task.spawn(MonitorEnemyHealth, plr)
+	task.spawn(MonitorEnemyHealth, plr) -- Monitors the enemy health to check if it's dead.
 
-	for _, Unit in pairs(Units:GetChildren()) do
+	for _, Unit in pairs(Units:GetChildren()) do -- Activates each unit, allowing them to attack.
 		task.spawn(UnitAttackLoop, plr, Unit, EnemyHealth)
 	end
 
