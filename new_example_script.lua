@@ -75,6 +75,13 @@ Functions.CalculateXPforLevel = function(Level)
 	return math.floor(math.pow(Level, 1.9) * 2 + 100)
 end	
 
+local function LevelUpUnit(plr, Unit, UnitNumber, XPForLvl)
+	Unit.Level = Unit.Level + 1 -- Adds level
+	Unit["XP"] = Unit["XP"] - XPForLvl
+	plr.PlayerStats.Units[UnitNumber]["XP"].Value = Unit["XP"] -- This makes it so the player can see the xp value in game.
+	Events.UnitLevelUp:FireClient(plr, workspace.UnitPlacements[UnitNumber]) -- VFX
+end
+
 -- Gives the unit xp
 Functions.GiveXP = function(Unit, XP, plr, UnitNumber)
 	print(Unit)
@@ -82,10 +89,7 @@ Functions.GiveXP = function(Unit, XP, plr, UnitNumber)
 	local XPForLvl = Functions.CalculateXPforLevel(Unit.Level)
 
 	while Unit["XP"] >= XPForLvl do -- While the unit has enough xp to level up.
-		Unit.Level = Unit.Level + 1 -- Adds level
-		Unit["XP"] = Unit["XP"] - XPForLvl
-		plr.PlayerStats.Units[UnitNumber]["XP"].Value = Unit["XP"] -- This makes it so the player can see the xp value in game.
-		Events.UnitLevelUp:FireClient(plr, workspace.UnitPlacements[UnitNumber]) -- VFX
+		LevelUpUnit(plr, Unit, UnitNumber, XPForLvl)
 		task.wait()
 	end
 	
@@ -186,6 +190,16 @@ Functions.GiveRankColor = function(TextLabel, Rank)
 	RankColor.Parent = TextLabel
 end
 
+local function ChooseEnemy(round) -- Choose a random, valid enemy based on current round
+	local possibleEnemies = {}
+	for _, unit in UnitTable do
+		if unit.MinimumRound <= round then
+			table.insert(possibleEnemies, unit)
+		end
+	end
+	return possibleEnemies[math.random(#possibleEnemies)]
+end
+
 -- Gives enemy an enemy to defeat
 Functions.AssignEnemy = function(plr: Player)
 	-- Variables
@@ -199,18 +213,7 @@ Functions.AssignEnemy = function(plr: Player)
 	local EnemyRank = Functions.AssignRank()
 	CurrentEnemy.Rank.Value = Functions.GetIndexFromRank(EnemyRank)
 
-	-- Choose a random, valid enemy based on current round
-	local function ChooseEnemy()
-		local possibleEnemies = {}
-		for _, unit in UnitTable do
-			if unit.MinimumRound <= round then
-				table.insert(possibleEnemies, unit)
-			end
-		end
-		return possibleEnemies[math.random(#possibleEnemies)]
-	end
-
-	local Enemy = ChooseEnemy() -- Chooses an enemy for the player to fight based off a table
+	local Enemy = ChooseEnemy(round) -- Chooses an enemy for the player to fight based off a table
 	CurrentEnemy.Value = Enemy.Name
 
 	-- Set enemy level and clamp it to at least 1
@@ -227,6 +230,20 @@ Functions.AssignEnemy = function(plr: Player)
 	Events.EnemyRespawned:FireClient(plr, CurrentEnemy)
 end
 
+local function SetUnitValues(Unit, UnitEquipped, UnitKey) -- Sets unit values in the workspace.
+	Unit.Value = UnitEquipped.Name
+	Unit.Level.Value = UnitEquipped.Level
+	Unit.Rank.Value = UnitEquipped.Rank
+	Unit.key.Value = UnitKey
+end
+
+local function MaintainEquippedUnit(Unit, UnitEquipped, UnitKey)
+	while UnitEquipped.Equipped do
+		SetUnitValues(Unit, UnitEquipped, UnitKey)
+		task.wait()
+	end
+end
+
 -- Equips Unit for the player
 Functions.EquipUnit = function(plr, UnitKey)
 	local DataStoreTable = GetDataTable(plr)
@@ -240,12 +257,7 @@ Functions.EquipUnit = function(plr, UnitKey)
 		return
 	end
 
-	local function SetUnitValues(Unit) -- Sets unit values in the workspace.
-		Unit.Value = UnitEquipped.Name
-		Unit.Level.Value = UnitEquipped.Level
-		Unit.Rank.Value = UnitEquipped.Rank
-		Unit.key.Value = UnitKey
-	end
+	SetUnitValues(Unit, UnitEquipped, UnitKey)
 
 	for _, Unit in pairs(PlayerStats.Units:GetChildren()) do -- equips first available slot only.
 		if Unit:FindFirstChild("Level").Value ~= 0 then continue end
@@ -258,12 +270,7 @@ Functions.EquipUnit = function(plr, UnitKey)
 		DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats)
 		Events.UpdateInventory:FireClient(plr) -- Updates client with new data, allowing the client to change the inventory.
 
-		task.spawn(function()
-			while UnitEquipped.Equipped do
-				SetUnitValues(Unit)
-				task.wait()
-			end
-		end)
+		task.spawn(MaintainEquippedUnit, Unit, UnitEquipped, UnitKey)
 
 		return
 	end
@@ -297,6 +304,26 @@ Functions.UnequipUnit = function(plr, UnitKey)
 	Inventory[tostring(UnitKey)].Equipped = false
 end
 
+local function UnitAttackLoop(plr, Unit, EnemyHealth) -- Adds the functionality for units to attack this enemy.
+	while plr do
+		if Unit.Value ~= "" and Unit.Value ~= nil and EnemyHealth.Value > 0 then
+			local Damage = Functions.CalculateDamage(Unit.Value, Unit.Level.Value, Unit.Rank.Value)
+			plr.PlayerStats.CurrentEnemy.HP.Value -= Damage
+			Events.UnitAttacks:FireClient(plr, Unit.Name)
+
+			task.spawn(function()
+				plr.PlayerStats.DPS.Value += Damage
+				task.wait(1)
+				plr.PlayerStats.DPS.Value -= Damage
+			end)
+
+			local UnitData = Functions.FindUnit(Unit.Value)
+			task.wait(UnitData.CD)
+		end
+		task.wait(math.random(5, 7) / 100)
+	end
+end
+
 -- Activate units (so they can attack)
 Functions.ActivateUnits = function(plr: Player)
 	plr:SetAttribute("ProcessingEnemy", false) -- Attribute that sets a debounce for processing the enemy
@@ -304,34 +331,6 @@ Functions.ActivateUnits = function(plr: Player)
 	local Enemy = plr.PlayerStats.CurrentEnemy 
 	local EnemyHealth = plr.PlayerStats.CurrentEnemy.HP
 	local Units = plr.PlayerStats.Units
-
-	-- Adds the functionality for units to attack this enemy.
-	local AttackFunction = function(Unit)		
-		task.spawn(function()
-
-			while plr do
-				-- Checks if there is a unit equipped and the enemy is alive, then making it so that unit attacks the enemy.
-				if Unit.Value ~= "" and Unit.Value ~= nil and EnemyHealth.Value > 0 then
-					local Damage = Functions.CalculateDamage(Unit.Value, Unit.Level.Value, Unit.Rank.Value) -- calculates unit damage
-					plr.PlayerStats.CurrentEnemy.HP.Value -= Damage -- Subtracts the enemies hp by the units damage.
-					Events.UnitAttacks:FireClient(plr, Unit.Name) -- VFX
-
-					task.spawn(function()
-						plr.PlayerStats.DPS.Value += Damage -- Adds to dps value.
-						task.wait(1)
-						plr.PlayerStats.DPS.Value -= Damage -- Removes to dps value.
-					end)
-
-					local Unit = Functions.FindUnit(Unit.Value)
-					task.wait(Unit.CD)
-				end
-
-				-- Debounce timer
-				task.wait(math.random(5,7)/100)
-			end
-
-		end)		
-	end
 
 	task.spawn(function()
 
@@ -349,7 +348,9 @@ Functions.ActivateUnits = function(plr: Player)
 
 	end)
 
-	for _, Unit in pairs(Units:GetChildren()) do AttackFunction(Unit) end
+	for _, Unit in pairs(Units:GetChildren()) do
+		task.spawn(UnitAttackLoop, plr, Unit)
+	end
 
 end
 
