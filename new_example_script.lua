@@ -1,6 +1,9 @@
+-- If you find any problems please give feedback!
 -- MODULE SCRIPT I MADE FOR MY IDLE ENEMY GAME. 
 
 local http = game:GetService("HttpService")
+
+-- Modules and other stuff.
 
 local UnitTable = require(script.Parent)
 local PlayerHandler = require(script.Parent.Parent.PlayerHandler)
@@ -100,7 +103,7 @@ Functions.AriseEnemy = function(plr: Player, Unit) -- SERVER ONLY
 	PlayerHandler.GiveGems(plr, 1)
 end
 
--- When a unit is defeated this function is called
+-- When a unit is defeated this function is called.
 Functions.UnitDefeated = function(plr: Player, Unit) -- SERVER ONLY
 	local DataStoreTable = GetDataTable(plr)
 
