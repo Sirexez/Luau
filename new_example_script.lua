@@ -130,30 +130,45 @@ Functions.AriseEnemy = function(plr: Player, Unit) -- SERVER ONLY
 	PlayerHandler.GiveGems(plr, 1)
 end
 
+local function WaitForRespawn(plr) -- Waits for enemy respawn
+	local Upgrades = PlrUpgrades.GetUpgradeTable(plr)
+	if Upgrades.RespawnTime then
+		task.wait(Upgrades.RespawnTime.Value)
+	else
+		task.wait(1.65)
+	end
+end
+
+
 -- When a unit is defeated this function is called.
-Functions.UnitDefeated = function(plr: Player, Unit) -- SERVER ONLY
+Functions.UnitDefeated = function(plr, Unit)
 	local DataStoreTable = GetDataTable(plr)
 
-	Functions.AriseEnemy(plr, {["Name"] = Unit.Value, ["Rank"] = Unit.Rank.Value, ["Level"] = Unit.Level.Value, ["Equipped"] = false, ["XP"] = 0}) -- Gives the player a chance to get the unit that is defeated
-	PlayerHandler.GiveCoins(plr, math.floor(math.pow(Unit.Level.Value , 1.9) * (Unit.Rank.Value + 1) * 2 / 2.5 * PlrUpgrades.CheckUpgrade(plr, "CoinMultiplier").Value) + 1) -- Gives players coins based off the equation * the players upgrade values.
+	Functions.AriseEnemy(plr, { -- Gives the player a chance to get that unit
+		Name = Unit.Value,
+		Rank = Unit.Rank.Value,
+		Level = Unit.Level.Value,
+		Equipped = false,
+		XP = 0
+	})
 
-	local xpToGive = math.floor(math.pow(Unit.Level.Value , 1.9) * 2 + 100) / 8.5
+	PlayerHandler.GiveCoins(plr, math.floor(math.pow(Unit.Level.Value , 1.9) * (Unit.Rank.Value + 1) * 2 / 2.5 * PlrUpgrades.CheckUpgrade(plr, "CoinMultiplier").Value) + 1)
+
+	local xpToGive = math.floor(math.pow(Unit.Level.Value , 1.9) * 2 + 100) / 8.5 -- Gets the amount of xp to give to each of the player's units.
 	Functions.AwardXPToAllUnits(plr, xpToGive)
 
 	plr.PlayerStats.EnemiesDefeated.Value += 1
-	Events.EnemyDefeated:FireClient(plr, Unit) -- Client vfx
-	PlayerHandler.GiveXP(plr, math.floor(math.pow(Unit.Level.Value , 1.9) * 2 + 100) / 4.5) -- Gives player xp
+	Events.EnemyDefeated:FireClient(plr, Unit) -- VFX
+	PlayerHandler.GiveXP(plr, math.floor(math.pow(Unit.Level.Value , 1.9) * 2 + 100) / 4.5)
 
-	if plr.PlayerStats.EnemiesDefeated.Value >= 10 and PlrOptions.GetOptionTable(plr)["AutoRound"] == true then
-		Functions.NextRound(plr) -- Triggers the next round
+	if plr.PlayerStats.EnemiesDefeated.Value >= 10 and PlrOptions.GetOptionTable(plr)["AutoRound"] then
+		Functions.NextRound(plr)
 	end
 
-	local Upgrades = PlrUpgrades.GetUpgradeTable(plr) -- Gets the players upgrades.
-
-	if Upgrades.RespawnTime then task.wait(Upgrades.RespawnTime.Value) else task.wait(1.65)	end -- Checks if the player has an upgrade that lowers enemy respawn rates.
-
-	Functions.AssignEnemy(plr) -- Assigns the player another enemy to fight.
+	WaitForRespawn(plr) -- Waits for the enemies respawn timer.
+	Functions.AssignEnemy(plr)
 end
+
 
 -- Gets rank from index
 Functions.GetRankFromIndex = function(Index)
@@ -259,6 +274,20 @@ local function MaintainEquippedUnit(Unit, UnitEquipped, UnitKey)
 	end
 end
 
+local function SetupEquippedUnit(plr, Unit, UnitEquipped, UnitKey)
+	SetUnitValues(Unit, UnitEquipped, UnitKey)
+	UnitEquipped.Equipped = true
+	PlayerHandler.Notify(plr, "Summon Equipped!")
+
+	local DataStoreTable = GetDataTable(plr)
+	local NewPlayerStats = DataStoreTable["PlayerStats"]
+	NewPlayerStats[Unit.Name] = UnitKey
+	DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats)
+
+	Events.UpdateInventory:FireClient(plr)
+	task.spawn(MaintainEquippedUnit, Unit, UnitEquipped, UnitKey)
+end
+
 -- Equips Unit for the player
 Functions.EquipUnit = function(plr, UnitKey)
 	local DataStoreTable = GetDataTable(plr)
@@ -266,33 +295,27 @@ Functions.EquipUnit = function(plr, UnitKey)
 	local PlayerStats = plr:WaitForChild("PlayerStats")
 	local UnitEquipped = Inventory[tostring(UnitKey)]
 
-	if not UnitEquipped then return end -- Checks if there is a unit to unequip
-	if UnitEquipped.Equipped then -- Checks if the unit is equipped, if so, unequips the unit.
+	if not UnitEquipped then return end -- If unit isn't equipped.
+
+	if UnitEquipped.Equipped then 	-- If the unit is already equipped, unequip it instead and exit
 		Functions.UnequipUnit(plr, UnitKey)
 		return
 	end
 
-	for _, Unit in pairs(PlayerStats.Units:GetChildren()) do -- equips first available slot only.
+	-- Loop through the player's unit slots in PlayerStats.Units
+	for _, Unit in pairs(PlayerStats.Units:GetChildren()) do
+		-- Skip if this slot is already occupied by a unit with level not zero
 		if Unit:FindFirstChild("Level").Value ~= 0 then continue end
 
-		SetUnitValues(Unit, UnitEquipped, UnitKey)
-
-		UnitEquipped.Equipped = true
-		PlayerHandler.Notify(plr, "Summon Equipped!")
-
-		local NewPlayerStats = DataStoreTable["PlayerStats"]
-		NewPlayerStats[Unit.Name] = UnitKey
-		DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats)
-		Events.UpdateInventory:FireClient(plr) -- Updates client with new data, allowing the client to change the inventory.
-
-		task.spawn(MaintainEquippedUnit, Unit, UnitEquipped, UnitKey)
-
+		-- Setup the unit in this empty slot (equipping)
+		SetupEquippedUnit(plr, Unit, UnitEquipped, UnitKey)
 		return
 	end
 end
 
+
 -- Unequips unit
-Functions.UnequipUnit = function(plr, UnitKey)
+Functions.UnequipUnit = function(plr, UnitKey) -- Unequips player unit
 	local DataStoreTable = GetDataTable(plr)
 	local Inventory = DataStoreTable["Unit Inventory"]
 
@@ -320,12 +343,11 @@ Functions.UnequipUnit = function(plr, UnitKey)
 end
 
 
-local function HandleDPS(plr, Damage)
+local function HandleDPS(plr, Damage) -- Handles the dps value for the player.
 	plr.PlayerStats.DPS.Value += Damage
 	task.wait(1)
 	plr.PlayerStats.DPS.Value -= Damage
 end
-
 
 local function UnitAttackLoop(plr, Unit, EnemyHealth) -- Adds the functionality for units to attack this enemy.
 	while plr do
