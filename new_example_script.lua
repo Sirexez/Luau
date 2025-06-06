@@ -46,13 +46,13 @@ local Ranks = {
 
 }
 
--- Gets savedata from player
+-- Gets savedata from player, this can include "PlayerStats", "Inventory", and "Upgrades".
 local GetDataTable = function(plr)
 	DataStore = require(game.ReplicatedStorage.Modules.Datastore)
 	return DataStore.GetPlayerDataTable(plr) -- returns player data
 end
 
--- Finds unit
+-- Returns a unit from UnitTable
 Functions.FindUnit = function(UnitName, FindInWorkspace)
 	for _, Unit in UnitTable do
 		if Unit.Name == UnitName then
@@ -66,6 +66,7 @@ Functions.CalculateDamage = function(UnitName, Level, Rank) -- RETURNS DPS
 	local Unit = Functions.FindUnit(UnitName)
 	local Base = Unit["BaseDamage"]
 
+	-- Calculates DPS: scaled by level^1.7 plus base scaled by level, modified by rank multiplier
 	return math.floor(math.pow(Level, 1.7) + (Base * (1 + Level/25)) - 1) * (1+Rank) -- calculates damage off of unit rank, basedamage, and level.
 end
 
@@ -111,13 +112,13 @@ Functions.UnitDefeated = function(plr: Player, Unit) -- SERVER ONLY
 	PlayerHandler.GiveCoins(plr, math.floor(math.pow(Unit.Level.Value , 1.9) * (Unit.Rank.Value + 1) * 2 / 2.5 * PlrUpgrades.CheckUpgrade(plr, "CoinMultiplier").Value) + 1) -- Gives players coins based off the equation * the players upgrade values.
 
 	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do -- Gives xp to all of the players equipped units.
-		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then continue end
+		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then continue end -- If there isn't a unit, it ends the iteration to prevent errors in trying to give xp to a nil unit.
 
 		local NewUnit = Functions.GiveXP(DataStoreTable["Unit Inventory"][tostring(unit.key.value)], math.floor(math.pow(Unit.Level.Value , 1.9) * 2 + 100) / 8.5, plr, unit.Name) -- unit after gaining the xp
 		local NewUnitInventory = DataStoreTable["Unit Inventory"] -- new inventory with new unit.
 		NewUnitInventory[tostring(unit.key.value)] = NewUnit -- updates unit it players datastore
 
-		DataStore.UpdatePlayerData(plr, "Unit Inventory", NewUnitInventory) -- updates unit it players datastore
+		DataStore.UpdatePlayerData(plr, "Unit Inventory", NewUnitInventory) -- updates players inventory with the new inventory so it can be stored.
 	end
 
 	plr.PlayerStats.EnemiesDefeated.Value += 1
@@ -220,13 +221,13 @@ Functions.AssignEnemy = function(plr: Player)
 	local hpMultiplier = defeated % 9 == 0 and defeated ~= 0 and GlobalConfig.Boss_HP_Multiplier or GlobalConfig.Enemy_HP_Multiplier
 	EnemyHealth.Value = math.floor(baseDamage * hpMultiplier * (1 + round / 12))
 
-	-- Checks for boss
+	-- Spawns boss every 9 enemies
 	CurrentEnemy.Boss.Value = (defeated % 9 == 0 and defeated ~= 0)
 
 	Events.EnemyRespawned:FireClient(plr, CurrentEnemy)
 end
 
--- Equips Unit for player
+-- Equips Unit for the player
 Functions.EquipUnit = function(plr, UnitKey)
 	local DataStoreTable = GetDataTable(plr)
 	local Inventory = DataStoreTable["Unit Inventory"]
