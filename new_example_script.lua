@@ -75,7 +75,7 @@ Functions.CalculateXPforLevel = function(Level)
 	return math.floor(math.pow(Level, 1.9) * 2 + 100)
 end	
 
--- Gives unit xp
+-- Gives the unit xp
 Functions.GiveXP = function(Unit, XP, plr, UnitNumber)
 	print(Unit)
 	Unit["XP"] = Unit["XP"] + XP
@@ -89,7 +89,7 @@ Functions.GiveXP = function(Unit, XP, plr, UnitNumber)
 		task.wait()
 	end
 	
-	return Unit
+	return Unit -- returns the unit after the xp changes
 	
 end
 
@@ -247,7 +247,7 @@ Functions.EquipUnit = function(plr, UnitKey)
 		Unit.key.Value = UnitKey
 	end
 
-	for _, Unit in pairs(PlayerStats.Units:GetChildren()) do
+	for _, Unit in pairs(PlayerStats.Units:GetChildren()) do -- equips first available slot only.
 		if Unit:FindFirstChild("Level").Value ~= 0 then continue end
 
 		UnitEquipped.Equipped = true
