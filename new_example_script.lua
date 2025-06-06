@@ -102,7 +102,7 @@ Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 	local DataStoreTable = GetDataTable(plr)
 	local UnitInventory = DataStoreTable["Unit Inventory"]
 
-	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do
+	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do -- goes through all of the units and gives them xp.
 		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then
 			continue
 		end
@@ -111,7 +111,7 @@ Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 		local CurrentUnit = UnitInventory[UnitKey]
 		if not CurrentUnit then continue end -- Safety check
 
-		local NewUnit = Functions.GiveXP(CurrentUnit, XPAmount, plr, unit.Name)
+		local NewUnit = Functions.GiveXP(CurrentUnit, XPAmount, plr, unit.Name) -- gives xp to the unit
 		UnitInventory[UnitKey] = NewUnit
 	end
 
