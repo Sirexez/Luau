@@ -1,7 +1,7 @@
 -- If you find any problems please give feedback!
 -- MODULE SCRIPT I MADE FOR MY IDLE ENEMY GAME. 
 
-local http = game:GetService("HttpService")
+local http = game:GetService("HttpService") -- Used to generate unique GUIDs for units (ensures no duplicate keys).
 
 -- Modules and other stuff.
 
@@ -18,7 +18,7 @@ local Modules = game.ReplicatedStorage.Modules
 
 local Functions = {}
 
--- AriseChances for unit game im making
+-- AriseChances: chance for a unit to be added to player inventory when defeated.
 local AriseChances = {
 
 	[0] = 1/3,
@@ -32,7 +32,7 @@ local AriseChances = {
 
 }
 
--- Rank of units with chances
+-- Ranks: defines each rarity's letter and chance when randomly assigning rank.
 local Ranks = {
 
 	[0] = { Rank = "E", Chance = 1/3 },
@@ -48,8 +48,8 @@ local Ranks = {
 
 -- Gets savedata from player, this can include "PlayerStats", "Inventory", and "Upgrades".
 local GetDataTable = function(plr)
-	DataStore = require(game.ReplicatedStorage.Modules.Datastore)
-	return DataStore.GetPlayerDataTable(plr) -- returns player data
+	DataStore = require(game.ReplicatedStorage.Modules.Datastore) -- Only requires when needed.
+	return DataStore.GetPlayerDataTable(plr) -- returns player data.
 end
 
 -- Returns a unit from UnitTable
@@ -61,22 +61,23 @@ Functions.FindUnit = function(UnitName, FindInWorkspace)
 	end
 end
 
--- Calculates unit damage
+-- Calculates unit damage and returns it, great for getting unit damage from any script.
 Functions.CalculateDamage = function(UnitName, Level, Rank) -- RETURNS DPS
 	local Unit = Functions.FindUnit(UnitName)
 	local Base = Unit["BaseDamage"]
 
-	-- Calculates DPS: scaled by level^1.7 plus base scaled by level, modified by rank multiplier
+	-- Calculates DPS: scaled by level^1.7 plus base scaled by level, modified by rank multiplier.
 	return math.floor(math.pow(Level, 1.7) + (Base * (1 + Level/25)) - 1) * (1+Rank) -- calculates damage off of unit rank, basedamage, and level.
 end
 
--- Calculate XP for level
+-- Calculate XP for level using an exponential function, really helps with player progression.
 Functions.CalculateXPforLevel = function(Level)
 	return math.floor(math.pow(Level, 1.9) * 2 + 100)
 end	
 
+-- Levels up units.
 local function LevelUpUnit(plr, Unit, UnitNumber, XPForLvl)
-	Unit.Level = Unit.Level + 1 -- Adds level
+	Unit.Level = Unit.Level + 1 -- Level up
 	Unit["XP"] = Unit["XP"] - XPForLvl
 	plr.PlayerStats.Units[UnitNumber]["XP"].Value = Unit["XP"] -- This makes it so the player can see the xp value in game.
 	Events.UnitLevelUp:FireClient(plr, workspace.UnitPlacements[UnitNumber]) -- VFX
@@ -93,25 +94,25 @@ Functions.GiveXP = function(Unit, XP, plr, UnitNumber)
 		task.wait()
 	end
 
-	return Unit -- returns the unit after the xp changes
+	return Unit -- returns the unit after the xp changes.
 
 end
 
--- Awards XP to all equipped player units
+-- Awards XP to all equipped player units.
 Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 	local DataStoreTable = GetDataTable(plr)
 	local UnitInventory = DataStoreTable["Unit Inventory"]
 
 	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do
-		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then
+		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then -- Checks if there is a valid unit so that the script doesn't give any errors
 			continue
 		end
 
 		local UnitKey = tostring(unit.key.Value)
 		local CurrentUnit = UnitInventory[UnitKey]
-		if not CurrentUnit then continue end -- Safety check
+		if not CurrentUnit then continue end -- Prevents error if inventory is not synced correctly.
 
-		local NewUnit = Functions.GiveXP(CurrentUnit, XPAmount, plr, unit.Name)
+		local NewUnit = Functions.GiveXP(CurrentUnit, XPAmount, plr, unit.Name) -- Creates a new unit with all the new values so that the old one can be replaced in the players inventory.
 		UnitInventory[UnitKey] = NewUnit
 	end
 
@@ -119,7 +120,7 @@ Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 end
 
 
--- Gives a chance for the player to get that unit to battle with
+-- Gives a chance for the player to get that unit to battle with.
 Functions.AriseEnemy = function(plr: Player, Unit) -- SERVER ONLY	
 	local Chance = math.random(0, 1000) -- gets a chance ranging from 0 to 1000
 
@@ -185,13 +186,16 @@ Functions.GetIndexFromRank = function(rankToFind)
 	return nil -- Return nil if the rank is not found
 end
 
--- Assign Rank to arised enemy
+-- Assigns a rank to a unit based on probability distribution, using a cumulative chance it helps scalability and fairness.
 Functions.AssignRank = function()
 	local totalChance = 0
+
+	-- Add up total chances of all ranks
 	for _, rankData in Ranks do
 		totalChance = totalChance + rankData.Chance
 	end
 
+	-- Generate a random value within the total probability range
 	local randomValue = math.random() * totalChance
 	local cumulativeChance = 0
 
@@ -202,6 +206,7 @@ Functions.AssignRank = function()
 	end
 	table.sort(sortedKeys)
 
+	-- Loop through sorted ranks and find where randomValue falls
 	for _, key in sortedKeys do
 		local rankData = Ranks[key]
 		cumulativeChance = cumulativeChance + rankData.Chance
@@ -210,9 +215,10 @@ Functions.AssignRank = function()
 		end
 	end
 
-	-- Fallback in case of floating point errors, return the last rank
+	-- Fallback in case no rank matched due to rounding
 	return Ranks[sortedKeys[#sortedKeys]].Rank
 end
+
 
 -- Gets rank color (vfx)
 Functions.GiveRankColor = function(TextLabel, Rank)
@@ -230,7 +236,7 @@ local function ChooseEnemy(round) -- Choose a random, valid enemy based on curre
 	return possibleEnemies[math.random(#possibleEnemies)]
 end
 
--- Gives enemy an enemy to defeat
+-- Assigns a new enemy for the player to fight
 Functions.AssignEnemy = function(plr: Player)
 	-- Variables
 	local PlayerStats = plr:WaitForChild("PlayerStats")
@@ -267,6 +273,7 @@ local function SetUnitValues(Unit, UnitEquipped, UnitKey) -- Sets unit values in
 	Unit.key.Value = UnitKey
 end
 
+-- Constantly refreshes unit data while equipped to keep in sync
 local function MaintainEquippedUnit(Unit, UnitEquipped, UnitKey)
 	while UnitEquipped.Equipped do
 		SetUnitValues(Unit, UnitEquipped, UnitKey)
@@ -274,19 +281,25 @@ local function MaintainEquippedUnit(Unit, UnitEquipped, UnitKey)
 	end
 end
 
+
+-- Initializes a unit in the workspace and marks it as equipped
 local function SetupEquippedUnit(plr, Unit, UnitEquipped, UnitKey)
 	SetUnitValues(Unit, UnitEquipped, UnitKey)
 	UnitEquipped.Equipped = true
 	PlayerHandler.Notify(plr, "Summon Equipped!")
 
+	-- Store this unit slot info in player stats for saving
 	local DataStoreTable = GetDataTable(plr)
 	local NewPlayerStats = DataStoreTable["PlayerStats"]
 	NewPlayerStats[Unit.Name] = UnitKey
 	DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats)
 
 	Events.UpdateInventory:FireClient(plr)
+
+	-- Keep values updated while equipped
 	task.spawn(MaintainEquippedUnit, Unit, UnitEquipped, UnitKey)
 end
+
 
 -- Equips Unit for the player
 Functions.EquipUnit = function(plr, UnitKey)
@@ -331,10 +344,10 @@ Functions.UnequipUnit = function(plr, UnitKey) -- Unequips player unit
 
 		Inventory[tostring(UnitKey)].Equipped = false
 
-		local NewPlayerStats = DataStoreTable["PlayerStats"]
+		local NewPlayerStats = DataStoreTable["PlayerStats"] -- Sets up a new table so that the old table can be replaced.
 		NewPlayerStats[Unit.Name] = nil
-		DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats) -- Updates data in the datastore
-		DataStore.UpdatePlayerData(plr, "Unit Inventory", Inventory)
+		DataStore.UpdatePlayerData(plr, "PlayerStats", NewPlayerStats) -- Updates data in the datastore with the change PlayerStats.
+		DataStore.UpdatePlayerData(plr, "Unit Inventory", Inventory) -- Updates data in the datastore with the changed Inventory.
 
 		Events.UpdateInventory:FireClient(plr)
 	end
@@ -349,34 +362,48 @@ local function HandleDPS(plr, Damage) -- Handles the dps value for the player.
 	plr.PlayerStats.DPS.Value -= Damage
 end
 
-local function UnitAttackLoop(plr, Unit, EnemyHealth) -- Adds the functionality for units to attack this enemy.
-	while plr do
-		if Unit.Value ~= "" and Unit.Value ~= nil and EnemyHealth.Value > 0 then
+-- Loop that handles individual unit attacks while enemy is alive
+local function UnitAttackLoop(plr, Unit, EnemyHealth)
+	while plr and plr.Parent and EnemyHealth.Value > 0 do
+		if Unit.Value and Unit.Value ~= "" and EnemyHealth.Value > 0 then
 			local Damage = Functions.CalculateDamage(Unit.Value, Unit.Level.Value, Unit.Rank.Value)
+
+			-- Deal damage to enemy
 			plr.PlayerStats.CurrentEnemy.HP.Value -= Damage
-			Events.UnitAttacks:FireClient(plr, Unit.Name) -- VFX
+			Events.UnitAttacks:FireClient(plr, Unit.Name) -- Visual VFX
 
-			task.spawn(HandleDPS, plr, Damage) -- Increases DPS Value based of unit damage
+			-- Add damage to DPS stat temporarily, using task.spawn() it creates a seperate thread easily and cleanly.
+			task.spawn(HandleDPS, plr, Damage)
 
+			-- Wait for cooldown based on unit config
 			local UnitData = Functions.FindUnit(Unit.Value)
-			task.wait(UnitData.CD) -- Cooldown
+			task.wait(UnitData.CD) -- UnitData.CD: cooldown between attacks
+		else
+			-- If unit inactive, wait briefly
+			task.wait(0.05)
 		end
-		task.wait(math.random(5, 7) / 100)
 	end
 end
 
-local function MonitorEnemyHealth(plr: Player) -- Checks if the enemy is dead, if so it fired the enemy defeated function.
-	local EnemyHealth = plr.PlayerStats.CurrentEnemy.HP
+-- Watches enemy HP and triggers enemy defeat logic when health reaches 0
+local function MonitorEnemyHealth(plr: Player)
+	local EnemyHealth: IntValue = plr.PlayerStats.CurrentEnemy.HP
 
-	while plr do
-		if not plr:GetAttribute("ProcessingEnemy") and EnemyHealth.Value <= 0 then -- if the enemy is dead.
+	EnemyHealth.Changed:Connect(function()
+		-- Check if the enemy died and debounce not active, using attributes helps with cleanliness.
+		if not plr:GetAttribute("ProcessingEnemy") and EnemyHealth.Value <= 0 then
 			plr:SetAttribute("ProcessingEnemy", true)
+
+			-- Process the enemy defeat
 			Functions.UnitDefeated(plr, plr.PlayerStats.CurrentEnemy)
+
+			-- Cooldown before allowing another defeat process
 			task.wait(1.15)
 			plr:SetAttribute("ProcessingEnemy", false)
 		end
+
 		task.wait(0.15)
-	end
+	end)
 end
 
 -- Activate units (so they can attack)
@@ -427,16 +454,19 @@ end
 
 -- Inventory Units have (LEVEL, DAMAGE, RANK)
 
--- RoundStuff
+-- || RoundStuff ||
 
-Functions.NextRound = function(plr) -- Advances to the next round after defeating a certain amount of enemies.
-	if plr.PlayerStats.EnemiesDefeated.Value < 10 then return end -- if player defeats 10 enemies, they go to the next round.
-	-- Reseting values
+-- Advances the player to the next round when enough enemies are defeated
+Functions.NextRound = function(plr)
+	if plr.PlayerStats.EnemiesDefeated.Value < 10 then return end
+
+	-- Reset enemy count and increase round number
 	plr.PlayerStats.EnemiesDefeated.Value = 0
 	plr.PlayerStats.Round.Value += 1
-	PlayerHandler.Notify(plr, "Round ".. tostring(plr.PlayerStats.Round.Value))
-	Functions.AssignEnemy(plr)
+	PlayerHandler.Notify(plr, "Round " .. tostring(plr.PlayerStats.Round.Value))
 
+	-- Assign new enemy for the next round
+	Functions.AssignEnemy(plr)
 end
 
 return Functions
