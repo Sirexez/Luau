@@ -103,8 +103,8 @@ Functions.AwardXPToAllUnits = function(plr: Player, XPAmount: number)
 	local DataStoreTable = GetDataTable(plr)
 	local UnitInventory = DataStoreTable["Unit Inventory"]
 
-	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do
-		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then -- Checks if there is a valid unit so that the script doesn't give any errors
+	for _, unit in pairs(plr.PlayerStats.Units:GetChildren()) do -- Using a forloop to get all of the players units.
+		if unit.Value == nil or unit.Value == "" or unit.Level.Value == 0 or unit.Name == 'CurrentEnemy' then -- Checks if there is a valid unit so that the script doesn't give any errors.
 			continue
 		end
 
@@ -178,7 +178,7 @@ end
 
 -- Gets index from rank
 Functions.GetIndexFromRank = function(rankToFind)
-	for index, rankData in Ranks do
+	for index, rankData in Ranks do -- Using forloops to find the rank.
 		if rankData.Rank == rankToFind then
 			return index
 		end
